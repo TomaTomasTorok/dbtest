@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manufacturing Flow Animation</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.1.5/pixi.min.js" integrity="sha512-WGpNZ2aPdIo8QH7L8z8WFKUMmIARdOEfM1W1PW9Uwol78hI0k9NRcHtCB0blURsWDVAJB2sMl0QVw1Gc7YCO3g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>Manufacturing Flow Animation</h1>
+        <div class="controls">
+          <button id="playToggle" class="primary">Play</button>
+          <label class="control-item">
+            Speed
+            <select id="speedControl">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="5">5×</option>
+              <option value="10">10×</option>
+            </select>
+          </label>
+          <label class="control-item">
+            Window (min)
+            <input id="windowSize" type="number" min="1" step="1" value="5" />
+          </label>
+          <div id="timeLabel" class="time-label">00:00:00</div>
+        </div>
+      </header>
+      <main>
+        <div class="canvas-container">
+          <canvas id="scene"></canvas>
+        </div>
+        <aside class="side-panel">
+          <section>
+            <h2>Timeline</h2>
+            <input id="timeSlider" type="range" min="0" max="100" value="0" />
+            <div class="timeline-info">
+              <span id="timeCurrent">0 min</span>
+              <span id="timeEnd">0 min</span>
+            </div>
+          </section>
+          <section>
+            <h2>Legend</h2>
+            <ul class="legend">
+              <li><span class="legend color-processing"></span>Processing</li>
+              <li><span class="legend color-queue"></span>In Buffer</li>
+              <li><span class="legend color-transport"></span>Transport</li>
+              <li><span class="legend color-breakdown"></span>Breakdown</li>
+            </ul>
+          </section>
+          <section>
+            <h2>KPIs</h2>
+            <ul class="kpis">
+              <li><span class="label">Work in process</span><span id="kpiWip">0</span></li>
+              <li><span class="label">Completed</span><span id="kpiCompleted">0</span></li>
+              <li><span class="label">Breakdowns</span><span id="kpiBreakdowns">0</span></li>
+            </ul>
+          </section>
+          <section>
+            <h2>Machine detail</h2>
+            <div id="machineDetails" class="details">Select a machine to inspect.</div>
+          </section>
+        </aside>
+      </main>
+      <footer>
+        <span>Data source: machine_events.csv &amp; product_timeline.csv</span>
+      </footer>
+    </div>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
