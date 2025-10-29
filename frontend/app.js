@@ -553,12 +553,18 @@ class SimulationController {
         break;
       case "TRANSPORT_START":
         if (event.entity_id != null) {
-          const fromPos = this.scene.getMachinePosition(event.machine);
-          const toMachine = event.to_machine || event.machine;
-          const toPos = this.scene.getBufferPosition(toMachine);
           const product = this.scene.getOrCreateProduct(event.entity_id);
+          const originMachine = event.from_machine || event.machine;
+          const fromPos = originMachine
+            ? this.scene.getMachinePosition(originMachine)
+            : { x: product.sprite.x, y: product.sprite.y };
+          const pending = this.pendingTransports.get(event.entity_id);
+          const toMachine = event.to_machine || pending?.toMachine || event.machine;
+          const toPos = this.scene.getBufferPosition(toMachine);
           product.beginTransport(fromPos, toPos, event.time_min);
           this.pendingTransports.set(event.entity_id, {
+            fromMachine: originMachine,
+            toMachine,
             fromPos,
             toPos,
             startTime: event.time_min,
@@ -569,7 +575,8 @@ class SimulationController {
         if (event.entity_id != null) {
           const product = this.scene.getOrCreateProduct(event.entity_id);
           const pending = this.pendingTransports.get(event.entity_id);
-          const toPos = this.scene.getBufferPosition(event.machine);
+          const destinationMachine = event.to_machine || pending?.toMachine || event.machine;
+          const toPos = this.scene.getBufferPosition(destinationMachine);
           if (pending) {
             product.finalizeTransport(toPos, event.time_min);
             this.pendingTransports.delete(event.entity_id);
