@@ -9,8 +9,13 @@ const COLORS = {
   breakdown: 0xef476f,
 };
 
+const COLOR_MUTED = 0x94a1b2;
 const MACHINE_SIZE = { width: 120, height: 60 };
 const BUFFER_OFFSET = { x: 0, y: -50 };
+
+function colorToCss(color) {
+  return `#${color.toString(16).padStart(6, "0")}`;
+}
 
 function formatClock(minutes) {
   const totalSeconds = Math.max(0, Math.floor(minutes * 60));
@@ -39,6 +44,47 @@ async function fetchJson(path, params = {}) {
     throw new Error(`Request failed (${response.status}): ${detail}`);
   }
   return await response.json();
+}
+
+class Ticker {
+  constructor() {
+    this.callbacks = new Set();
+    this.lastTime = performance.now();
+    this._running = true;
+    this._tick = this._tick.bind(this);
+    requestAnimationFrame(this._tick);
+  }
+
+  add(callback) {
+    this.callbacks.add(callback);
+  }
+
+  remove(callback) {
+    this.callbacks.delete(callback);
+  }
+
+  stop() {
+    this._running = false;
+  }
+
+  start() {
+    if (!this._running) {
+      this._running = true;
+      this.lastTime = performance.now();
+      requestAnimationFrame(this._tick);
+    }
+  }
+
+  _tick(now) {
+    if (!this._running) return;
+    const deltaMs = now - this.lastTime;
+    this.lastTime = now;
+    const delta = deltaMs / (1000 / 60);
+    for (const callback of this.callbacks) {
+      callback(delta);
+    }
+    requestAnimationFrame(this._tick);
+  }
 }
 
 class EventStream {
@@ -107,90 +153,65 @@ class MachineView {
   constructor(machine, layout, parent, onSelect) {
     this.machine = machine;
     this.layout = layout;
-    this.container = new PIXI.Container();
-    this.container.eventMode = "static";
-    this.container.cursor = "pointer";
-
-    this.body = new PIXI.Graphics();
-    this.body.beginFill(0x11263b);
-    this.body.lineStyle(2, 0x1f4068, 1);
-    this.body.drawRoundedRect(-MACHINE_SIZE.width / 2, -MACHINE_SIZE.height / 2, MACHINE_SIZE.width, MACHINE_SIZE.height, 12);
-    this.body.endFill();
-
-    this.label = new PIXI.Text(machine, {
-      fontSize: 12,
-      fill: 0xffffff,
-      fontFamily: "Inter, sans-serif",
-      align: "center",
-      wordWrap: true,
-      wordWrapWidth: MACHINE_SIZE.width - 12,
-    });
-    this.label.anchor.set(0.5);
-    this.label.position.set(0, -5);
-
-    this.statusLabel = new PIXI.Text("Idle", {
-      fontSize: 11,
-      fill: 0x94a1b2,
-      fontFamily: "Inter, sans-serif",
-    });
-    this.statusLabel.anchor.set(0.5);
-    this.statusLabel.position.set(0, 18);
-
-    this.bufferContainer = new PIXI.Container();
-    this.bufferContainer.position.set(BUFFER_OFFSET.x, BUFFER_OFFSET.y);
-
-    const bufferGraphic = new PIXI.Graphics();
-    bufferGraphic.beginFill(0x243b53, 0.9);
-    bufferGraphic.lineStyle(1, 0x4cc9f0, 0.8);
-    bufferGraphic.drawRoundedRect(-40, -20, 80, 40, 10);
-    bufferGraphic.endFill();
-
-    this.bufferLabel = new PIXI.Text("0", {
-      fontSize: 14,
-      fill: 0x4cc9f0,
-      fontWeight: "bold",
-    });
-    this.bufferLabel.anchor.set(0.5);
-
-    this.bufferContainer.addChild(bufferGraphic, this.bufferLabel);
-
-    this.container.addChild(this.body, this.label, this.statusLabel, this.bufferContainer);
-    this.container.position.set(layout.x, layout.y);
-
-    this.container.on("pointertap", () => onSelect(this));
-
-    parent.addChild(this.container);
-
     this.queueLength = 0;
     this.lastEvent = null;
     this.activeBreakdown = false;
+
+    this.element = document.createElement("div");
+    this.element.className = "machine";
+    this.element.style.left = `${layout.x}px`;
+    this.element.style.top = `${layout.y}px`;
+
+    this.bufferElement = document.createElement("div");
+    this.bufferElement.className = "buffer";
+    this.bufferLabel = document.createElement("span");
+    this.bufferLabel.className = "buffer-label";
+    this.bufferLabel.textContent = "0";
+    this.bufferElement.appendChild(this.bufferLabel);
+
+    this.body = document.createElement("div");
+    this.body.className = "body";
+    this.label = document.createElement("div");
+    this.label.className = "label";
+    this.label.textContent = machine;
+    this.statusLabel = document.createElement("div");
+    this.statusLabel.className = "status";
+    this.setStatus("Idle", COLOR_MUTED);
+
+    this.body.appendChild(this.label);
+    this.body.appendChild(this.statusLabel);
+
+    this.element.appendChild(this.bufferElement);
+    this.element.appendChild(this.body);
+
+    this.element.addEventListener("click", () => onSelect(this));
+
+    parent.appendChild(this.element);
   }
 
   setQueueLength(value) {
-    this.queueLength = value;
-    this.bufferLabel.text = String(value ?? 0);
+    this.queueLength = value ?? 0;
+    this.bufferLabel.textContent = String(this.queueLength);
   }
 
-  setStatus(text, color = 0x94a1b2) {
-    this.statusLabel.style.fill = color;
-    this.statusLabel.text = text;
+  setStatus(text, color = COLOR_MUTED) {
+    this.statusLabel.textContent = text;
+    this.statusLabel.style.color = colorToCss(color);
   }
 
   setBreakdown(active) {
     this.activeBreakdown = active;
-    this.body.tint = active ? COLORS.breakdown : 0xffffff;
+    this.element.classList.toggle("breakdown", active);
   }
 }
 
 class ProductView {
   constructor(id, parent) {
     this.id = id;
-    this.sprite = new PIXI.Graphics();
-    this.sprite.beginFill(COLORS.queue, 0.95);
-    this.sprite.drawCircle(0, 0, 6);
-    this.sprite.endFill();
-    this.sprite.visible = false;
-    parent.addChild(this.sprite);
+    this.element = document.createElement("div");
+    this.element.className = "product";
+    this.element.style.display = "none";
+    parent.appendChild(this.element);
 
     this.state = "queue";
     this.transport = null;
@@ -198,13 +219,17 @@ class ProductView {
   }
 
   setState(state, color) {
+    this.element.classList.remove("state-queue", "state-processing", "state-transport");
+    this.element.classList.add(`state-${state}`);
+    this.element.style.background = colorToCss(color);
     this.state = state;
-    this.sprite.tint = color;
   }
 
   moveTo(x, y) {
-    this.sprite.position.set(x, y);
-    this.sprite.visible = true;
+    this.element.style.left = `${x}px`;
+    this.element.style.top = `${y}px`;
+    this.element.style.display = "block";
+    this.element.classList.add("visible");
   }
 
   beginTransport(fromPos, toPos, startTime) {
@@ -221,7 +246,7 @@ class ProductView {
 
   finalizeTransport(toPos, endTime) {
     if (!this.transport) {
-      this.beginTransport({ x: this.sprite.x, y: this.sprite.y }, toPos, endTime - 0.05);
+      this.beginTransport({ x: parseFloat(this.element.style.left) || 0, y: parseFloat(this.element.style.top) || 0 }, toPos, endTime - 0.05);
     }
     this.transport.toPos = toPos;
     this.transport.endTime = Math.max(endTime, this.transport.startTime + 0.05);
@@ -229,14 +254,15 @@ class ProductView {
   }
 
   update(currentTime) {
-    if (!this.sprite.visible) return;
+    if (this.element.style.display === "none") return;
     if (this.transport) {
       const { fromPos, toPos, startTime, endTime } = this.transport;
       const progress = Math.min(1, Math.max(0, (currentTime - startTime) / Math.max(0.001, endTime - startTime)));
       const ease = progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress;
       const x = fromPos.x + (toPos.x - fromPos.x) * ease;
       const y = fromPos.y + (toPos.y - fromPos.y) * ease;
-      this.sprite.position.set(x, y);
+      this.element.style.left = `${x}px`;
+      this.element.style.top = `${y}px`;
       if (progress >= 1) {
         this.transport = null;
         if (this.queueAfterTransport) {
@@ -248,7 +274,8 @@ class ProductView {
   }
 
   hide() {
-    this.sprite.visible = false;
+    this.element.style.display = "none";
+    this.element.classList.remove("visible");
     this.transport = null;
     this.queueAfterTransport = false;
   }
@@ -256,22 +283,32 @@ class ProductView {
 
 class Scene {
   constructor(metadata) {
-    const canvas = document.getElementById("scene");
-    this.app = new PIXI.Application({
-      view: canvas,
-      backgroundAlpha: 0,
-      resizeTo: canvas.parentElement,
-      antialias: true,
-      resolution: window.devicePixelRatio,
-    });
     this.metadata = metadata;
+    this.root = document.getElementById("scene");
+    this.root.innerHTML = "";
+    this.root.classList.add("scene-root");
+
+    this.width = metadata.layout?.width || this.root.clientWidth || 1280;
+    this.height = metadata.layout?.height || this.root.clientHeight || 720;
+
+    this.linkLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    this.linkLayer.classList.add("scene-links");
+    this.linkLayer.setAttribute("viewBox", `0 0 ${this.width} ${this.height}`);
+    this.linkLayer.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+    this.machineLayer = document.createElement("div");
+    this.machineLayer.className = "machine-layer";
+
+    this.productLayer = document.createElement("div");
+    this.productLayer.className = "product-layer";
+
+    this.root.appendChild(this.linkLayer);
+    this.root.appendChild(this.machineLayer);
+    this.root.appendChild(this.productLayer);
+
     this.machines = new Map();
     this.products = new Map();
-    this.machineLayer = new PIXI.Container();
-    this.productLayer = new PIXI.Container();
-    this.linkLayer = new PIXI.Container();
-
-    this.app.stage.addChild(this.linkLayer, this.machineLayer, this.productLayer);
+    this.ticker = new Ticker();
 
     this._buildMachines();
     this._buildLinks();
@@ -305,31 +342,34 @@ class Scene {
   }
 
   _buildLinks() {
-    const g = new PIXI.Graphics();
-    g.lineStyle(1, 0x1f4068, 0.35);
+    this.linkLayer.innerHTML = "";
     for (const edge of this.metadata.edges || []) {
       const from = this.machines.get(edge.from);
       const to = this.machines.get(edge.to);
       if (!from || !to) continue;
-      g.moveTo(from.container.x, from.container.y);
-      g.lineTo(to.container.x, to.container.y);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", from.layout.x);
+      line.setAttribute("y1", from.layout.y);
+      line.setAttribute("x2", to.layout.x);
+      line.setAttribute("y2", to.layout.y);
+      line.setAttribute("stroke", "rgba(31, 64, 104, 0.35)");
+      line.setAttribute("stroke-width", "1");
+      this.linkLayer.appendChild(line);
     }
-    g.alpha = 0.3;
-    this.linkLayer.addChild(g);
   }
 
   getMachinePosition(machine) {
     const view = this.machines.get(machine);
     if (!view) return { x: 0, y: 0 };
-    return { x: view.container.x, y: view.container.y };
+    return { x: view.layout.x, y: view.layout.y };
   }
 
   getBufferPosition(machine) {
     const view = this.machines.get(machine);
     if (!view) return { x: 0, y: 0 };
     return {
-      x: view.container.x + BUFFER_OFFSET.x,
-      y: view.container.y + BUFFER_OFFSET.y,
+      x: view.layout.x + BUFFER_OFFSET.x,
+      y: view.layout.y + BUFFER_OFFSET.y,
     };
   }
 
@@ -358,7 +398,7 @@ class Scene {
   countActiveProducts() {
     let count = 0;
     for (const view of this.products.values()) {
-      if (view.sprite.visible) {
+      if (view.element.style.display !== "none") {
         count += 1;
       }
     }
@@ -411,7 +451,7 @@ class SimulationController {
       this.stream.windowSize = minutes;
     });
 
-    this.scene.app.ticker.add((delta) => {
+    this.scene.ticker.add((delta) => {
       if (!this.isPlaying) {
         this.scene.updateProductAnimations(this.currentTime);
         if (this.kpisDirty) {
@@ -441,79 +481,57 @@ class SimulationController {
     this.slider.value = this.currentTime;
   }
 
-  async advanceTo(targetTime) {
-    if (targetTime < this.currentTime) {
-      await this.seek(targetTime);
-      return;
-    }
-    const events = await this.stream.takeUntil(targetTime);
-    for (const event of events) {
-      this.applyEvent(event);
-    }
-    this.currentTime = targetTime;
-    this.scene.updateProductAnimations(this.currentTime);
-    if (this.kpisDirty) {
-      this.updateKpis();
-      this.kpisDirty = false;
-    }
-    this.updateClock();
-    if (this.currentTime >= this.metadata.time.end) {
-      this.isPlaying = false;
-      this.playButton.textContent = "Play";
+  togglePlay() {
+    this.isPlaying = !this.isPlaying;
+    this.playButton.textContent = this.isPlaying ? "Pause" : "Play";
+    if (this.isPlaying) {
+      this.scene.ticker.start();
     }
   }
 
   async seek(time) {
     this.isPlaying = false;
     this.playButton.textContent = "Play";
+    this.currentTime = Math.max(this.metadata.time.start, Math.min(time, this.metadata.time.end));
     await this.stream.reset(this.stream.windowSize);
     this.pendingTransports.clear();
     this.completedCount = 0;
     this.breakdownActive.clear();
     this.kpisDirty = true;
-    for (const view of this.scene.products.values()) {
-      view.hide();
-    }
+
     for (const machine of this.scene.machines.values()) {
       machine.setQueueLength(0);
-      machine.setStatus("Idle");
+      machine.setStatus("Idle", COLOR_MUTED);
       machine.setBreakdown(false);
       machine.lastEvent = null;
     }
-    this.currentTime = this.metadata.time.start;
-    this.updateClock();
-    if (time <= this.metadata.time.start) {
-      if (this.kpisDirty) {
-        this.updateKpis();
-        this.kpisDirty = false;
-      }
-      return;
+    for (const product of this.scene.products.values()) {
+      product.hide();
     }
-    const chunkSize = this.stream.windowSize;
-    let cursor = this.metadata.time.start;
-    while (cursor < time) {
-      const next = Math.min(time, cursor + chunkSize);
-      const events = await this.stream.takeUntil(next);
-      for (const event of events) {
-        this.applyEvent(event);
-      }
-      cursor = next;
+
+    await this.advanceTo(this.currentTime, true);
+  }
+
+  async advanceTo(targetTime, force = false) {
+    await this.stream.ensureUntil(targetTime + this.stream.windowSize * 0.1);
+
+    const events = await this.stream.takeUntil(targetTime);
+    for (const event of events) {
+      this.handleEvent(event);
+      this.currentTime = event.time_min;
+      this.scene.updateProductAnimations(this.currentTime);
     }
-    this.currentTime = time;
+
+    this.currentTime = targetTime;
     this.scene.updateProductAnimations(this.currentTime);
-    if (this.kpisDirty) {
+    this.updateClock();
+    if (this.kpisDirty || force) {
       this.updateKpis();
       this.kpisDirty = false;
     }
-    this.updateClock();
   }
 
-  togglePlay() {
-    this.isPlaying = !this.isPlaying;
-    this.playButton.textContent = this.isPlaying ? "Pause" : "Play";
-  }
-
-  applyEvent(event) {
+  handleEvent(event) {
     const machine = this.scene.machines.get(event.machine);
     if (machine) {
       machine.lastEvent = event;
@@ -557,7 +575,7 @@ class SimulationController {
           const originMachine = event.from_machine || event.machine;
           const fromPos = originMachine
             ? this.scene.getMachinePosition(originMachine)
-            : { x: product.sprite.x, y: product.sprite.y };
+            : { x: parseFloat(product.element.style.left) || 0, y: parseFloat(product.element.style.top) || 0 };
           const pending = this.pendingTransports.get(event.entity_id);
           const toMachine = event.to_machine || pending?.toMachine || event.machine;
           const toPos = this.scene.getBufferPosition(toMachine);
