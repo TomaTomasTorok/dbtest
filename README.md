@@ -28,6 +28,20 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Quickstart with bundled sample data
+
+To experiment without sourcing the production CSV exports, generate the included
+sample dataset and start the API against it:
+
+```bash
+python scripts/generate_sample_events.py
+MACHINE_EVENTS_PATH=data/machine_events_sample.csv uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+The sample file is a lossless conversion of the CSV excerpt shared in the
+project brief, so you can immediately exercise the `/api/metadata` and
+`/api/events` endpoints.
+
 Configure the CSV locations via environment variables (absolute or relative to the repo root):
 
 ```bash
