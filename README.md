@@ -38,10 +38,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Generate sample data
 
-The repository already includes `data/machine_events_sample.csv`. Regenerate it
-from the original TSV excerpt if needed:
 
 ```bash
 python scripts/generate_sample_events.py
