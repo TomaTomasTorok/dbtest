@@ -1,0 +1,1 @@
+"""Desktop simulation application package."""
